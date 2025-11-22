@@ -1,60 +1,124 @@
 import streamlit as st
 import pickle
-import re
+import pandas as pd
+from io import BytesIO
 from sklearn.feature_extraction.text import TfidfVectorizer
-# Pastikan library yang digunakan di model juga ada di requirements.txt
+from sklearn.base import BaseEstimator # Import BaseEstimator untuk type hinting
 
-# Muat Model dan Vectorizer yang sudah disimpan
-try:
-    with open('sentiment_model.pkl', 'rb') as f:
-        model = pickle.load(f)
-    with open('vectorizer.pkl', 'rb') as f:
-        vectorizer = pickle.load(f)
-except FileNotFoundError:
-    st.error("Model atau Vectorizer tidak ditemukan. Jalankan model.py terlebih dahulu.")
-    st.stop()
-except Exception as e:
-    st.error(f"Gagal memuat model: {e}")
-    st.stop()
-
-# Mapping hasil sentimen
-sentimen_map = {
+# Mapping hasil sentimen (sesuaikan dengan model Anda)
+SENTIMENT_MAP = {
     0: 'Negatif 🔴',
     1: 'Positif 🟢',
     2: 'Netral 🟡'
 }
 
-def preprocess_text(text):
-    # Contoh preprocessing sederhana
-    text = text.lower()
-    text = re.sub(r'[^a-zA-Z0-9\s]', '', text) # Hapus non-alphanumeric
-    return text
+st.set_page_config(page_title="Upload & Analisis Model", layout="wide")
 
-def predict_sentiment(text):
-    # 1. Preprocess
-    clean_text = preprocess_text(text)
-    # 2. Vectorize
-    vectorized_text = vectorizer.transform([clean_text])
-    # 3. Predict
-    prediction = model.predict(vectorized_text)[0]
-    return sentimen_map[prediction]
+st.title("⬆️ Upload Model & Data untuk Analisis Sentimen")
+st.markdown("Unggah Model Sentimen (`.pkl`) dan Data Peserta Didik (`.xlsx`/`.csv`) untuk melakukan analisis secara massal.")
 
-# --- Antarmuka Streamlit ---
-st.set_page_config(page_title="Analisis Sentimen Peserta Didik", layout="centered")
+# --- Bagian Upload File ---
+col1, col2 = st.columns(2)
 
-st.title("💡 Analisis Sentimen Umpan Balik Peserta Didik")
-st.markdown("Masukkan teks umpan balik dari peserta didik di bawah ini untuk menganalisis sentimennya (Positif, Negatif, atau Netral).")
+with col1:
+    st.subheader("1. Unggah Model Sentimen (Pickle)")
+    uploaded_model_file = st.file_uploader(
+        "Pilih file .pkl yang berisi model sentimen Anda.", 
+        type=['pkl']
+    )
 
-# Area input teks
-user_input = st.text_area("Teks Umpan Balik:", height=150, placeholder="Contoh: Saya suka cara guru mengajar, materinya mudah dipahami.")
+with col2:
+    st.subheader("2. Unggah Data Peserta Didik (Excel/CSV)")
+    uploaded_data_file = st.file_uploader(
+        "Pilih file .xlsx atau .csv untuk dianalisis.", 
+        type=['xlsx', 'csv']
+    )
 
-# Tombol untuk analisis
-if st.button("Analisis Sentimen"):
-    if user_input:
-        with st.spinner('Menganalisis...'):
-            result = predict_sentiment(user_input)
-            st.success("✅ Analisis Selesai!")
-            st.markdown(f"### Hasil Sentimen: **{result}**")
-            st.balloons()
-    else:
-        st.warning("Mohon masukkan teks umpan balik untuk dianalisis.")
+# --- Bagian Proses dan Analisis ---
+if uploaded_model_file is not None and uploaded_data_file is not None:
+    st.markdown("---")
+    st.subheader("3. Proses Analisis")
+    
+    # Memuat Model dan Vectorizer
+    try:
+        # File .pkl harus berisi TUPLE: (model, vectorizer) atau class yang berisi keduanya.
+        # Jika Anda menyimpan model dan vectorizer terpisah, gabungkan di sini.
+        uploaded_model_data = pickle.load(uploaded_model_file)
+        
+        # Asumsi: file .pkl berisi (model, vectorizer)
+        if isinstance(uploaded_model_data, tuple) and len(uploaded_model_data) == 2:
+            model = uploaded_model_data[0]
+            vectorizer = uploaded_model_data[1]
+        else:
+            # Jika file pkl berisi objek yang lebih kompleks atau model tunggal, sesuaikan di sini.
+            st.error("Format file .pkl tidak sesuai. Harap pastikan berisi (model, vectorizer) atau struktur yang dikenali.")
+            st.stop()
+
+        st.success("✅ Model dan Vectorizer berhasil dimuat.")
+        
+    except Exception as e:
+        st.error(f"Gagal memuat file model (.pkl): {e}")
+        st.stop()
+        
+    # Memuat Data
+    try:
+        if uploaded_data_file.name.endswith('.csv'):
+            data = pd.read_csv(uploaded_data_file)
+        elif uploaded_data_file.name.endswith('.xlsx'):
+            data = pd.read_excel(uploaded_data_file)
+        else:
+            st.warning("Jenis file data tidak didukung.")
+            st.stop()
+        
+        st.success("✅ Data berhasil dimuat.")
+        st.dataframe(data.head())
+
+    except Exception as e:
+        st.error(f"Gagal memuat file data: {e}")
+        st.stop()
+
+    # Logika Analisis
+    
+    # Minta pengguna menentukan kolom teks
+    st.markdown("---")
+    text_column = st.selectbox(
+        "Pilih nama **kolom** di data yang berisi teks umpan balik:", 
+        options=data.columns
+    )
+    
+    if st.button("Jalankan Analisis Sentimen Massal"):
+        if text_column in data.columns:
+            with st.spinner('Menganalisis sentimen untuk semua data...'):
+                
+                # Fungsi prediksi (Pastikan data di-preprocess seperti saat training)
+                def predict_sentiment_from_model(text):
+                    if pd.isna(text) or text == "":
+                        return SENTIMENT_MAP.get(2, 'Netral') # Anggap missing/kosong sebagai Netral
+                    try:
+                        vectorized_text = vectorizer.transform([str(text).lower()])
+                        prediction = model.predict(vectorized_text)[0]
+                        return SENTIMENT_MAP.get(prediction, 'Tidak Diketahui')
+                    except Exception as e:
+                        return f"Error: {e}"
+
+                # Terapkan fungsi prediksi ke kolom teks
+                data['Hasil_Sentimen'] = data[text_column].apply(predict_sentiment_from_model)
+                
+                st.success("Analisis Sentimen Massal Selesai!")
+                
+                # Tampilkan hasil
+                st.dataframe(data)
+
+                # Sediakan tombol unduh hasil
+                csv = data.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="⬇️ Unduh Hasil Analisis (.csv)",
+                    data=csv,
+                    file_name='hasil_analisis_sentimen.csv',
+                    mime='text/csv',
+                )
+        else:
+            st.error("Kolom yang dipilih tidak ditemukan.")
+
+elif uploaded_model_file is None and uploaded_data_file is None:
+    st.info("Silakan unggah Model dan Data Anda di atas untuk memulai.")
