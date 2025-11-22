@@ -1,38 +1,56 @@
 import pandas as pd
-from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 import pickle
+import os
 
-# --- Simulasikan Data ---
+# --- 1. Simulasikan Data Pelatihan ---
 data = {
     'teks': [
         "Pembelajaran hari ini sangat menyenangkan.",
-        "Materi yang disampaikan terlalu sulit.",
-        "Guru menjelaskannya dengan baik.",
+        "Materi yang disampaikan terlalu sulit dan membingungkan.",
+        "Guru menjelaskannya dengan sangat baik dan detail.",
         "Tugasnya terlalu banyak, saya jadi stres.",
-        "Saya tidak punya komentar."
+        "Saya tidak punya komentar tentang materi ini.",
+        "Metode pengajaran ini efisien sekali.",
+        "Lingkungan kelas kurang kondusif.",
+        "Saya merasa termotivasi setelah sesi ini.",
+        "Waktu yang diberikan terlalu singkat."
     ],
     # 1: Positif, 0: Negatif, 2: Netral
-    'sentimen': [1, 0, 1, 0, 2]
+    'sentimen': [1, 0, 1, 0, 2, 1, 0, 1, 0]
 }
 df = pd.DataFrame(data)
-# ------------------------
 
-# 1. Feature Extraction
+# --- 2. Feature Extraction (Vectorizer) ---
+# TfidfVectorizer harus di-fit pada data training
 vectorizer = TfidfVectorizer()
 X = vectorizer.fit_transform(df['teks'])
 y = df['sentimen']
 
-# 2. Train Model
-model = LogisticRegression()
+# --- 3. Train Model ---
+model = LogisticRegression(max_iter=1000)
 model.fit(X, y)
 
-# 3. Simpan Model dan Vectorizer
-with open('sentiment_model.pkl', 'wb') as f:
-    pickle.dump(model, f)
+# --- 4. Gabungkan dan Simpan sebagai Tuple ---
 
-with open('vectorizer.pkl', 'wb') as f:
-    pickle.dump(vectorizer, f)
+# Menggabungkan model (classifier) dan vectorizer menjadi satu tuple
+# Urutan: (model, vectorizer)
+model_package = (model, vectorizer)
 
-print("Model dan Vectorizer berhasil disimpan.")
+# Tentukan nama file output
+output_filename = 'sentiment_package.pkl'
+
+# Menyimpan tuple ke dalam file .pkl
+try:
+    with open(output_filename, 'wb') as f:
+        pickle.dump(model_package, f)
+    
+    print("----------------------------------------------------------------")
+    print(f"✅ Model dan Vectorizer berhasil disimpan sebagai satu file:")
+    print(f"   Nama File: {output_filename}")
+    print(f"   Ukuran File: {os.path.getsize(output_filename) / 1024:.2f} KB")
+    print("----------------------------------------------------------------")
+
+except Exception as e:
+    print(f"❌ Gagal menyimpan file: {e}")
